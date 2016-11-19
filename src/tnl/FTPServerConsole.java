@@ -1,8 +1,6 @@
 package tnl;
 
 import java.util.Scanner;
-import tnl.FTPServer;
-
 
 
 public class FTPServerConsole {
@@ -36,17 +34,56 @@ public class FTPServerConsole {
         ftpServer.start();
 
         System.out.println(String.format("\nFTP Server started at port %d", port));
-        System.out.println("Press Q or q anytime to stop the server");
+        System.out.println("Type h/H to get help, q/Q to stop the server");
 
         while (true) {
-            String c = scanConsole.nextLine();
-            if (c.length() > 0 && (c.charAt(0) == 'q' || c.charAt(0) == 'Q')) {
+            System.out.print("> ");
+            String command = scanConsole.nextLine().trim();
+
+            if (command.equals("q") || command.equals("Q")) {
                 System.out.println("Closing FTP server");
                 ftpServer.close();
-
                 return;
             }
 
+            if (command.equals("h") || command.equals("H")) {
+                showHelp();
+                continue;
+            }
+
+            if (command.equals("l") || command.equals("L")) {
+                listCurrentConnection();
+                continue;
+            }
+
+            if (command.length() >= 3 && (command.charAt(0) == 'c' || command.charAt(0) == 'C')) {
+                String connectionKey = command.substring(2).trim();
+
+                try {
+                    ftpServer.closeConnection(connectionKey);
+                } catch (Exception e) {
+                    System.out.println(String.format("%s: This connection does not exist.", connectionKey));
+                }
+
+                continue;
+            }
+
+            // Otherwise, invalid command
+            System.out.println("Invalid command!");
+        }
+
+    }
+
+    private static void showHelp() {
+        System.out.println("l/L                 List all current connection.");
+        System.out.println("c/C <connection>    Close a connection.");
+        System.out.println("q/Q                 Stop the whole server.");
+        System.out.println("h/H                 Get help.");
+    }
+
+    private static void listCurrentConnection() {
+        for (String conn : ftpServer.getCurrentConnectionMap()) {
+            System.out.println(conn);
         }
 
     }

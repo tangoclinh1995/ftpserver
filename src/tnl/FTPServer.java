@@ -7,7 +7,8 @@ import java.util.TreeMap;
 
 
 
-public class FTPServer extends Thread {
+
+public class FTPServer extends Thread implements onFTPThreadTerminateListener {
     private static final int MAX_ALLOWED_CONNECTION = 2;
 
 
@@ -15,7 +16,7 @@ public class FTPServer extends Thread {
     private ServerSocket serverSocket;
     private boolean wantToClose;
 
-    private TreeMap<String, FTPServerThread> currentConnection;
+    private TreeMap<String, FTPServerThread> currentConnectionMap;
 
 
 
@@ -23,7 +24,7 @@ public class FTPServer extends Thread {
         serverSocket = new ServerSocket(port);
         wantToClose = false;
 
-        currentConnection = new TreeMap<String, FTPServerThread>();
+        currentConnectionMap = new TreeMap<String, FTPServerThread>();
     }
 
     public void run() {
@@ -46,7 +47,7 @@ public class FTPServer extends Thread {
                     // Silently ignore the exception
                 }
 
-                for (Map.Entry<String, FTPServerThread> entry : currentConnection.entrySet()) {
+                for (Map.Entry<String, FTPServerThread> entry : currentConnectionMap.entrySet()) {
                     entry.getValue().close();
                 }
 
@@ -54,14 +55,14 @@ public class FTPServer extends Thread {
             }
 
             // Create new connection
-            String connectionMapKey = socket.getInetAddress().toString() + String.valueOf(socket.getPort());
+            String connectionMapKey = socket.getInetAddress().getHostAddress() + ":" + String.valueOf(socket.getPort());
             FTPServerThread ftpThread = null;
 
             System.out.println("New connection from " + connectionMapKey);
 
             try {
-                ftpThread = new FTPServerThread(socket);
-                currentConnection.put(connectionMapKey, ftpThread);
+                ftpThread = new FTPServerThread(socket, this);
+                currentConnectionMap.put(connectionMapKey, ftpThread);
 
                 ftpThread.start();
             } catch (Exception e) {
@@ -81,6 +82,32 @@ public class FTPServer extends Thread {
             // Silently ignore the exception
         }
 
+    }
+
+    public void closeConnection(String connectionKey) throws Exception {
+        FTPServerThread ftpServerThread = currentConnectionMap.get(connectionKey);
+
+        if (ftpServerThread == null) {
+            throw new Exception("Connection does not exist!");
+        }
+
+        System.out.println(String.format("%s: Closing.", connectionKey));
+
+        ftpServerThread.close();
+    }
+
+    public String[] getCurrentConnectionMap() {
+        return (String[]) currentConnectionMap.keySet().toArray();
+    }
+
+    public void onConnectionAutoTerminated(String connectionKey) {
+        System.out.println(String.format("%s: Error happened. Connection terminated.", connectionKey));
+
+        currentConnectionMap.remove(connectionKey);
+    }
+
+    public void onConnectionTerminated(String connectionKey) {
+        System.out.println(String.format("%s: Connection terminated.", connectionKey));
     }
 
 }
