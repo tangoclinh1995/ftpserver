@@ -9,10 +9,6 @@ import java.util.TreeMap;
 
 
 public class FTPServer extends Thread implements onFTPThreadTerminateListener {
-    private static final int MAX_ALLOWED_CONNECTION = 2;
-
-
-
     private ServerSocket serverSocket;
     private boolean wantToClose;
 
