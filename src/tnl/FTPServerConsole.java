@@ -38,7 +38,9 @@ public class FTPServerConsole {
 
         while (true) {
             System.out.print("> ");
-            String command = scanConsole.nextLine().trim();
+            String command = scanConsole.nextLine();
+
+            command = command.trim();
 
             if (command.equals("q") || command.equals("Q")) {
                 System.out.println("Closing FTP server");

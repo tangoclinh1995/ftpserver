@@ -117,6 +117,10 @@ public class FTPServerThread extends Thread {
 
 
 
+    private HashMap<String, String> USERS;
+
+
+
     private boolean wantToClose;
 
     private Socket socket;
@@ -128,27 +132,31 @@ public class FTPServerThread extends Thread {
     private String connectionKey;
 
     private boolean hasLoggedIn;
-    private boolean userNameProvided;
+    private String username;
 
     private boolean isRunning;
 
 
 
-    public FTPServerThread(Socket socket, onFTPThreadTerminateListener autoTerminateListener) {
+    public FTPServerThread(Socket socket, String connectionKey, onFTPThreadTerminateListener autoTerminateListener)
+            throws Exception
+    {
         this.socket = socket;
-        connectionKey = socket.getInetAddress().getHostAddress() + ":" + String.valueOf(socket.getPort());
+        this.connectionKey = connectionKey;
 
         this.connectionClosedListener = autoTerminateListener;
 
         hasLoggedIn = false;
-        userNameProvided = false;
+        username = null;
 
         try {
             this.inputStream = new BufferedReader((new InputStreamReader(this.socket.getInputStream())));
             this.outputStream = new PrintWriter(this.socket.getOutputStream());
         } catch (Exception e) {
-
+            throw e;
         }
+
+        initializeUSERS();
 
         wantToClose = false;
         isRunning = false;
@@ -158,6 +166,7 @@ public class FTPServerThread extends Thread {
         isRunning = true;
 
         String request;
+        boolean closedHasBeenAnnouced = false;
 
         while (!wantToClose) {
             try {
@@ -170,28 +179,64 @@ public class FTPServerThread extends Thread {
                 break;
             }
 
-            // User wants to close this connection
+            // Console user wants to close this connection
             if (wantToClose) {
                 closeSocket(false);
                 connectionClosedListener.onConnectionTerminated(connectionKey);
+
+                closedHasBeenAnnouced = true;
                 break;
             }
+
+            System.out.println(String.format("%s: %s", connectionKey, request));
 
             FTPRequest ftpRequest;
             try {
                 ftpRequest = new FTPRequest(request);
             } catch (Exception e) {
                 // Invalid request, will close the connection immediately
+                System.out.println(String.format("%s: Invalid request!", connectionKey));
+
                 closeSocket(true);
                 connectionClosedListener.onConnectionAutoTerminated(connectionKey);
 
+                closedHasBeenAnnouced = true;
                 break;
             }
 
-            handleRequest(ftpRequest);
+            // Right now, there is no different between the ways to handle InvalidRequest
+            // and ServerUnrecoverableException. We just simply close this connection
+            try {
+                handleRequest(ftpRequest);
+
+            } catch (InvalidRequestException e) {
+                System.out.println(String.format("%s: Invalid request!.", connectionKey));
+
+                closeSocket(true);
+                connectionClosedListener.onConnectionAutoTerminated(connectionKey);
+
+                closedHasBeenAnnouced = true;
+                break;
+
+            } catch (ServerUnrecoverableException e) {
+                System.out.println(String.format("%s: %s!", connectionKey, e.getMessage()));
+
+                closeSocket(true);
+                connectionClosedListener.onConnectionAutoTerminated(connectionKey);
+
+                closedHasBeenAnnouced = true;
+                break;
+            }
+
         }
 
         isRunning = false;
+
+        if (!closedHasBeenAnnouced) {
+            connectionClosedListener.onConnectionAutoTerminated(connectionKey);
+            closeSocket(false);
+        }
+
     }
 
     public void close() {
@@ -200,6 +245,14 @@ public class FTPServerThread extends Thread {
         if (!isRunning) {
             closeSocket(false);
         }
+    }
+
+    private void initializeUSERS() {
+        USERS = new HashMap<String, String>();
+
+        USERS.put("usernopass", "");
+        USERS.put("user1", "user1");
+        USERS.put("user2", "user2");
     }
 
     private void closeSocket(boolean forced) {
@@ -220,7 +273,90 @@ public class FTPServerThread extends Thread {
 
     }
 
-    private void handleRequest(FTPRequest ftpRequest) {
+    private void handleRequest(FTPRequest request)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (request.code.equals(FTPRequestCode.USERNAME)) {
+            loginWithUsername(request.arguments);
+
+        } else if (request.code.equals(FTPRequestCode.PASSWORD)) {
+            loginWithPassword(request.arguments);
+
+        } else if (request.code.equals(FTPRequestCode.LOGOUT)) {
+            wantToClose = true;
+
+        } else {
+            throw new InvalidRequestException();
+        }
 
     }
+
+    private void loginWithUsername(ArrayList<String> requestArguments)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (requestArguments.size() != 1) {
+            throw new InvalidRequestException();
+        }
+
+        if (hasLoggedIn || username != null) {
+            throw new InvalidRequestException();
+        }
+
+        String password = USERS.get(requestArguments.get(0));
+
+        if (password == null) {
+            throw new ServerUnrecoverableException("User does not exist");
+        }
+
+        username = requestArguments.get(0);
+
+        try {
+            if (password.equals("")) {
+                // No password required, logged in successfully
+                outputStream.println(FTPResponseCode.LOGGED_IN + " Logged in successfully");
+                hasLoggedIn = true;
+
+                System.out.println(String.format("%s: User %s logged in successfully", connectionKey, username));
+            } else {
+                // Password required
+                outputStream.println(FTPResponseCode.ENTER_PASS + " Enter password");
+            }
+
+        } catch (Exception e) {
+            throw new ServerUnrecoverableException("Error writing to output stream");
+        }
+
+    }
+
+    private void loginWithPassword(ArrayList<String> requestArguments)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (requestArguments.size() != 1) {
+            throw new InvalidRequestException();
+        }
+
+        if (hasLoggedIn || username == null) {
+            throw new InvalidRequestException();
+        }
+
+        String userPassword = USERS.get(username);
+
+        if (userPassword.equals(requestArguments.get(0))) {
+            // Logged in successfully
+            try {
+                outputStream.println(FTPResponseCode.LOGGED_IN + " Logged in successfully");
+                hasLoggedIn = true;
+
+                System.out.println(String.format("%s: User %s logged in successfully", connectionKey, username));
+            } catch (Exception e) {
+                throw new ServerUnrecoverableException("Error writing to output stream");
+            }
+
+        } else {
+            // Loggin unsuccessfully
+            throw new ServerUnrecoverableException("Invalid password");
+        }
+
+    }
+
 }

@@ -57,7 +57,7 @@ public class FTPServer extends Thread implements onFTPThreadTerminateListener {
             System.out.println("New connection from " + connectionMapKey);
 
             try {
-                ftpThread = new FTPServerThread(socket, this);
+                ftpThread = new FTPServerThread(socket, connectionMapKey, this);
                 currentConnectionMap.put(connectionMapKey, ftpThread);
 
                 ftpThread.start();
@@ -93,7 +93,7 @@ public class FTPServer extends Thread implements onFTPThreadTerminateListener {
     }
 
     public String[] getCurrentConnectionMap() {
-        return (String[]) currentConnectionMap.keySet().toArray();
+        return currentConnectionMap.keySet().toArray(new String[currentConnectionMap.size()]);
     }
 
     public void onConnectionAutoTerminated(String connectionKey) {
