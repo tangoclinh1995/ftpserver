@@ -20,6 +20,9 @@ public class FTPServerConsole {
 
         try {
             port = scanConsole.nextInt();
+
+            // Consume the '\n' character in order to prepare for the next nextLine()
+            scanConsole.nextLine();
         } catch (Exception e) {
             System.out.println("\nInvalid port number! Terminated.");
             return;

@@ -3,8 +3,7 @@ package tnl;
 import java.io.*;
 import java.net.*;
 import java.util.*;
-
-
+import java.util.logging.Logger;
 
 
 public class FTPServerThread extends Thread {
@@ -13,9 +12,18 @@ public class FTPServerThread extends Thread {
         public ArrayList<String> arguments;
 
         public FTPRequest(String request) throws Exception {
-            int index, prev, len;
+            arguments = new ArrayList<String>();
 
-            index = request.indexOf(" ");
+            int index = request.indexOf(" ");
+
+            if (index == -1) {
+                code = request;
+                if (!FTPRequestCode.isValidCode(code)) {
+                    throw new Exception("Invalid request");
+                }
+
+                return;
+            }
 
             code = request.substring(0, index).toUpperCase();
             if (!FTPRequestCode.isValidCode(code)) {
@@ -24,10 +32,9 @@ public class FTPServerThread extends Thread {
 
             request = request.substring(index + 1).trim();
 
-            arguments = new ArrayList<String>();
-
             index = 0;
-            len = request.length();
+            int len = request.length();
+            int prev;
 
             while (index < len) {
                 prev = index;
@@ -151,7 +158,7 @@ public class FTPServerThread extends Thread {
 
         try {
             this.inputStream = new BufferedReader((new InputStreamReader(this.socket.getInputStream())));
-            this.outputStream = new PrintWriter(this.socket.getOutputStream());
+            this.outputStream = new PrintWriter(this.socket.getOutputStream(), true);
         } catch (Exception e) {
             throw e;
         }
@@ -233,18 +240,21 @@ public class FTPServerThread extends Thread {
         isRunning = false;
 
         if (!closedHasBeenAnnouced) {
-            connectionClosedListener.onConnectionAutoTerminated(connectionKey);
+            connectionClosedListener.onConnectionTerminated(connectionKey);
             closeSocket(false);
         }
 
     }
 
     public void close() {
+        Logger.getGlobal().info(String.format("%s want to close", connectionKey));
+
         wantToClose = true;
 
         if (!isRunning) {
             closeSocket(false);
         }
+
     }
 
     private void initializeUSERS() {
@@ -263,6 +273,11 @@ public class FTPServerThread extends Thread {
                 outputStream.println(FTPResponseCode.LOGGED_OUT + "Logged out");
             }
 
+        } catch (Exception e) {
+            // Silently ignore exception
+        }
+
+        try {
             inputStream.close();
             outputStream.close();
 
