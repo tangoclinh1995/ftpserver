@@ -2,6 +2,8 @@ package tnl;
 
 import java.io.*;
 import java.net.*;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -10,15 +12,19 @@ import java.util.TreeMap;
 
 public class FTPServer extends Thread implements onFTPThreadTerminateListener {
     private ServerSocket serverSocket;
+    private Path serverDirectory;
+
     private boolean wantToClose;
 
     private TreeMap<String, FTPServerThread> currentConnectionMap;
 
 
 
-    public FTPServer(int port) throws Exception {
-        serverSocket = new ServerSocket(port);
-        wantToClose = false;
+    public FTPServer(int port, String serverDirectory) throws Exception {
+        this.serverSocket = new ServerSocket(port);
+        this.wantToClose = false;
+
+        this.serverDirectory = Paths.get(serverDirectory);
 
         currentConnectionMap = new TreeMap<String, FTPServerThread>();
     }
@@ -57,7 +63,7 @@ public class FTPServer extends Thread implements onFTPThreadTerminateListener {
             System.out.println("New connection from " + connectionMapKey);
 
             try {
-                ftpThread = new FTPServerThread(socket, connectionMapKey, this);
+                ftpThread = new FTPServerThread(socket, connectionMapKey, serverDirectory, this);
                 currentConnectionMap.put(connectionMapKey, ftpThread);
 
                 ftpThread.start();

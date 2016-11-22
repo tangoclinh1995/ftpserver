@@ -1,5 +1,7 @@
 package tnl;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Scanner;
 
 
@@ -11,6 +13,7 @@ public class FTPServerConsole {
 
     public static void main(String[] argv) {
         int port;
+        String serverDirectory;
 
         System.out.println("FTP Server");
         System.out.println("----------");
@@ -28,8 +31,23 @@ public class FTPServerConsole {
             return;
         }
 
+        System.out.print("Absolute path to server directory: ");
+        serverDirectory = scanConsole.nextLine();
+
         try {
-            ftpServer = new FTPServer(port);
+            if (!Files.isDirectory(Paths.get(serverDirectory))) {
+                System.out.println("Invalid path! Terminated");
+
+                return;
+            }
+        } catch (Exception e) {
+            System.out.println("Invalid path! Terminated");
+
+            return;
+        }
+
+        try {
+            ftpServer = new FTPServer(port, serverDirectory);
         } catch (Exception e) {
             System.out.println(String.format("\nCannot start FTP Server at port %d! Terminated.", port));
         }

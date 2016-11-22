@@ -2,6 +2,7 @@ package tnl;
 
 import java.io.*;
 import java.net.*;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -98,7 +99,7 @@ public class FTPServerThread extends Thread {
 
 
         public static boolean isValidCode(String code) {
-            return REQUEST_CODES.indexOf(code) != -1;
+            return REQUEST_CODES.contains(code);
         }
     }
 
@@ -118,6 +119,7 @@ public class FTPServerThread extends Thread {
         public static final int FORCED_LOGGED_OUT = 421;
         public static final int DATA_CONNECTION_OPEN_FAILED = 425;
         public static final int DATA_TRANSFER_ERROR = 426;
+        public static final int REQUEST_FILE_ACTION_FAILED = 450;
 
         public static final int SYNTAX_ERROR = 501;
     }
@@ -134,6 +136,9 @@ public class FTPServerThread extends Thread {
     private BufferedReader inputStream;
     private PrintWriter outputStream;
 
+    private Path serverDirectory;
+    private Path currentAccessDirectory;
+
     private onFTPThreadTerminateListener connectionClosedListener;
 
     private String connectionKey;
@@ -145,13 +150,16 @@ public class FTPServerThread extends Thread {
 
 
 
-    public FTPServerThread(Socket socket, String connectionKey, onFTPThreadTerminateListener autoTerminateListener)
+    public FTPServerThread(Socket socket, String connectionKey, Path serverDirectory, onFTPThreadTerminateListener autoTerminateListener)
             throws Exception
     {
         this.socket = socket;
         this.connectionKey = connectionKey;
+        this.serverDirectory = serverDirectory;
 
         this.connectionClosedListener = autoTerminateListener;
+
+        this.currentAccessDirectory = this.serverDirectory.toAbsolutePath();
 
         hasLoggedIn = false;
         username = null;
