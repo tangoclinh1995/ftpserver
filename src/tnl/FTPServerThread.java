@@ -136,6 +136,9 @@ public class FTPServerThread extends Thread {
     private BufferedReader inputStream;
     private PrintWriter outputStream;
 
+    private String clientDataAddress;
+    private String clientDataPort;
+
     private Path serverDirectory;
     private Path currentAccessDirectory;
 
@@ -156,6 +159,9 @@ public class FTPServerThread extends Thread {
         this.socket = socket;
         this.connectionKey = connectionKey;
         this.serverDirectory = serverDirectory;
+
+        this.clientDataAddress = null;
+        this.clientDataPort = null;
 
         this.connectionClosedListener = autoTerminateListener;
 
@@ -308,6 +314,9 @@ public class FTPServerThread extends Thread {
         } else if (request.code.equals(FTPRequestCode.LOGOUT)) {
             wantToClose = true;
 
+        } else if (request.code.equals(FTPRequestCode.OPEN_DATA_CONNECTION)) {
+
+
         } else {
             throw new InvalidRequestException();
         }
@@ -380,6 +389,20 @@ public class FTPServerThread extends Thread {
             throw new ServerUnrecoverableException("Invalid password");
         }
 
+    }
+
+    private void saveDataConnectionArugments(ArrayList<String> requestArguments)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (requestArguments.size() != 2) {
+            throw new InvalidRequestException();
+        }
+
+        clientDataAddress = requestArguments.get(0);
+        clientDataPort = requestArguments.get(1);
+
+        // Need to handle exception here!
+        outputStream.println(FTPResponseCode.DATA_CONNECTION_OPEN_DONE);
     }
 
 }
