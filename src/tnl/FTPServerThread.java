@@ -1,6 +1,10 @@
 package tnl;
 
+import org.omg.CORBA.*;
+import org.omg.CORBA.DynAnyPackage.Invalid;
+
 import java.io.*;
+import java.io.DataOutputStream;
 import java.net.*;
 import java.nio.file.Path;
 import java.util.*;
@@ -127,6 +131,7 @@ public class FTPServerThread extends Thread {
 
 
     private HashMap<String, String> USERS;
+    private final int BUFFER_SIZE = 1024;
 
 
 
@@ -137,7 +142,7 @@ public class FTPServerThread extends Thread {
     private PrintWriter outputStream;
 
     private String clientDataAddress;
-    private String clientDataPort;
+    private int clientDataPort;
 
     private Path serverDirectory;
     private Path currentAccessDirectory;
@@ -161,7 +166,7 @@ public class FTPServerThread extends Thread {
         this.serverDirectory = serverDirectory;
 
         this.clientDataAddress = null;
-        this.clientDataPort = null;
+        this.clientDataPort = -1;
 
         this.connectionClosedListener = autoTerminateListener;
 
@@ -302,6 +307,15 @@ public class FTPServerThread extends Thread {
 
     }
 
+    private void sendResponse(String response) throws ServerUnrecoverableException {
+        outputStream.println(response);
+
+        if (outputStream.checkError()) {
+            throw new ServerUnrecoverableException("Error sending response to client");
+        }
+
+    }
+
     private void handleRequest(FTPRequest request)
             throws InvalidRequestException, ServerUnrecoverableException
     {
@@ -315,7 +329,7 @@ public class FTPServerThread extends Thread {
             wantToClose = true;
 
         } else if (request.code.equals(FTPRequestCode.OPEN_DATA_CONNECTION)) {
-
+            saveDataConnectionArugments(request.arguments);
 
         } else {
             throw new InvalidRequestException();
@@ -342,20 +356,15 @@ public class FTPServerThread extends Thread {
 
         username = requestArguments.get(0);
 
-        try {
-            if (password.equals("")) {
-                // No password required, logged in successfully
-                outputStream.println(FTPResponseCode.LOGGED_IN + " Logged in successfully");
-                hasLoggedIn = true;
+        if (password.equals("")) {
+            // No password required, logged in successfully
+            sendResponse(FTPResponseCode.LOGGED_IN + " Logged in successfully");
+            hasLoggedIn = true;
 
-                System.out.println(String.format("%s: User %s logged in successfully", connectionKey, username));
-            } else {
-                // Password required
-                outputStream.println(FTPResponseCode.ENTER_PASS + " Enter password");
-            }
-
-        } catch (Exception e) {
-            throw new ServerUnrecoverableException("Error writing to output stream");
+            System.out.println(String.format("%s: User %s logged in successfully", connectionKey, username));
+        } else {
+            // Password required
+            sendResponse(FTPResponseCode.ENTER_PASS + " Enter password");
         }
 
     }
@@ -375,14 +384,10 @@ public class FTPServerThread extends Thread {
 
         if (userPassword.equals(requestArguments.get(0))) {
             // Logged in successfully
-            try {
-                outputStream.println(FTPResponseCode.LOGGED_IN + " Logged in successfully");
-                hasLoggedIn = true;
+            sendResponse(FTPResponseCode.LOGGED_IN + " Logged in successfully");
+            hasLoggedIn = true;
 
-                System.out.println(String.format("%s: User %s logged in successfully", connectionKey, username));
-            } catch (Exception e) {
-                throw new ServerUnrecoverableException("Error writing to output stream");
-            }
+            System.out.println(String.format("%s: User %s logged in successfully", connectionKey, username));
 
         } else {
             // Loggin unsuccessfully
@@ -399,10 +404,71 @@ public class FTPServerThread extends Thread {
         }
 
         clientDataAddress = requestArguments.get(0);
-        clientDataPort = requestArguments.get(1);
+
+        try {
+            clientDataPort = Integer.parseInt(requestArguments.get(1));
+        } catch (Exception e) {
+            throw new InvalidRequestException();
+        }
 
         // Need to handle exception here!
-        outputStream.println(FTPResponseCode.DATA_CONNECTION_OPEN_DONE);
+        sendResponse(FTPResponseCode.DATA_CONNECTION_OPEN_DONE + " Data connection parameters saved");
+    }
+
+    private Socket establishDataConnection() throws Exception {
+        Socket dataSocket = new Socket(clientDataAddress, clientDataPort);
+        return dataSocket;
+    }
+
+    private void serveDownloadRequest(ArrayList<String> requestArguments)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (requestArguments.size() != 1) {
+            throw new InvalidRequestException();
+        }
+
+        if (clientDataAddress == null || clientDataPort == -1) {
+            throw new InvalidRequestException();
+        }
+
+        File fileOut = currentAccessDirectory.resolve(requestArguments.get(0)).toFile();
+
+        // If file does not exist
+        if (!fileOut.exists()) {
+            sendResponse(FTPResponseCode.REQUEST_FILE_ACTION_FAILED + " File not exist");
+            return;
+        }
+
+        FileInputStream fileInStream;
+
+        try {
+            fileInStream = new FileInputStream(fileOut);
+        } catch (Exception e) {
+            sendResponse(FTPResponseCode.REQUEST_FILE_ACTION_FAILED + " Error reading requested file");
+            return;
+        }
+
+        try {
+            sendResponse(FTPResponseCode.SIGNAL_DATA_CONNECTION_OPEN + " Data connection about to open");
+        } catch (Exception e) {
+            System.out.println(String.format(
+                    "%s: Error establishing data connection to %s:%s",
+                    connectionKey, clientDataAddress, clientDataPort
+            ));
+
+            return;
+        }
+
+        Socket dataSocket = null;
+        DataOutputStream dataInputStream;
+        byte[] buffer = new byte[BUFFER_SIZE];
+
+        try {
+
+        } catch (Exception e) {
+
+        }
+
     }
 
 }
