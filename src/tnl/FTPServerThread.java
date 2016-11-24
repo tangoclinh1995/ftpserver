@@ -442,10 +442,10 @@ public class FTPServerThread extends Thread {
             return;
         }
 
-        FileInputStream fileInStream;
+        FileInputStream fileRequestedInpStream;
 
         try {
-            fileInStream = new FileInputStream(fileOut);
+            fileRequestedInpStream = new FileInputStream(fileOut);
         } catch (Exception e) {
             sendResponse(FTPResponseCode.REQUEST_FILE_ACTION_FAILED + " Error reading requested file");
             return;
@@ -463,12 +463,12 @@ public class FTPServerThread extends Thread {
         }
 
         Socket dataSocket = null;
-        DataOutputStream dataOutputStream;
+        DataOutputStream socketOutStream;
         byte[] buffer = new byte[BUFFER_SIZE];
 
         try {
             dataSocket = establishDataConnection();
-            dataOutputStream = new DataOutputStream(dataSocket.getOutputStream());
+            socketOutStream = new DataOutputStream(dataSocket.getOutputStream());
         } catch (Exception e) {
             // Close data socket, if already created. Ignore the exception
             try {
@@ -492,7 +492,7 @@ public class FTPServerThread extends Thread {
 
         while (true) {
             try {
-                byteRead = fileInStream.read(buffer, 0, BUFFER_SIZE);
+                byteRead = fileRequestedInpStream.read(buffer, 0, BUFFER_SIZE);
             } catch (Exception e) {
                 errorOccured = 1;
                 break;
@@ -503,8 +503,8 @@ public class FTPServerThread extends Thread {
             }
 
             try {
-                dataOutputStream.write(buffer, 0, byteRead);
-                dataOutputStream.flush();
+                socketOutStream.write(buffer, 0, byteRead);
+                socketOutStream.flush();
             } catch (Exception e) {
                 errorOccured = 2;
                 break;
@@ -514,11 +514,11 @@ public class FTPServerThread extends Thread {
 
         try {
             // Close data socket
-            dataOutputStream.close();
+            socketOutStream.close();
             dataSocket.close();
 
             // Close file
-            fileInStream.close();
+            fileRequestedInpStream.close();
         } catch (Exception e) {
             // Silently ignore the exception
         }
