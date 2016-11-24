@@ -331,6 +331,9 @@ public class FTPServerThread extends Thread {
         } else if (request.code.equals(FTPRequestCode.OPEN_DATA_CONNECTION)) {
             saveDataConnectionArugments(request.arguments);
 
+        } else if (request.code.equals(FTPRequestCode.DOWNLOAD_FILE)) {
+            serveDownloadRequest(request.arguments);
+
         } else {
             throw new InvalidRequestException();
         }
