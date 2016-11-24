@@ -110,6 +110,8 @@ public class FTPServer extends Thread implements onFTPThreadTerminateListener {
 
     public void onConnectionTerminated(String connectionKey) {
         System.out.println(String.format("%s: Connection terminated.", connectionKey));
+
+        currentConnectionMap.remove(connectionKey);
     }
 
 }
