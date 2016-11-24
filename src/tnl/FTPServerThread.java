@@ -460,13 +460,87 @@ public class FTPServerThread extends Thread {
         }
 
         Socket dataSocket = null;
-        DataOutputStream dataInputStream;
+        DataOutputStream dataOutputStream;
         byte[] buffer = new byte[BUFFER_SIZE];
 
         try {
-
+            dataSocket = establishDataConnection();
+            dataOutputStream = new DataOutputStream(dataSocket.getOutputStream());
         } catch (Exception e) {
+            // Close data socket, if already created. Ignore the exception
+            try {
+                if (dataSocket != null) {
+                    dataSocket.close();
+                }
+            } catch (Exception se) {
+                // Silently ignore the exception
+            }
 
+            System.out.println(String.format(
+                    "%s: Error establishing data connection to %s:%s",
+                    connectionKey, clientDataAddress, clientDataPort
+            ));
+
+            return;
+        }
+
+        int byteRead;
+        int errorOccured = 0;
+
+        while (true) {
+            try {
+                byteRead = fileInStream.read(buffer, 0, BUFFER_SIZE);
+            } catch (Exception e) {
+                errorOccured = 1;
+                break;
+            }
+
+            if (byteRead == -1) {
+                break;
+            }
+
+            try {
+                dataOutputStream.write(buffer, 0, byteRead);
+                dataOutputStream.flush();
+            } catch (Exception e) {
+                errorOccured = 2;
+                break;
+            }
+
+        }
+
+        try {
+            // Close data socket
+            dataOutputStream.close();
+            dataSocket.close();
+
+            // Close file
+            fileInStream.close();
+        } catch (Exception e) {
+            // Silently ignore the exception
+        }
+
+        if (errorOccured == 1) {
+            System.out.println(String.format(
+                    "%s: Error reading data from file '%s'",
+                    connectionKey, requestArguments.get(0)
+            ));
+
+            sendResponse(FTPResponseCode.DATA_CONNECTION_OPEN_FAILED + " Error in file access on server");
+        } else if (errorOccured == 2) {
+            System.out.println(String.format(
+                    "%s: Error sending file data to client at %s:%s",
+                    connectionKey, clientDataAddress, clientDataPort
+            ));
+
+            sendResponse(FTPResponseCode.DATA_CONNECTION_OPEN_FAILED + " File data transmission error");
+        } else {
+            System.out.println(String.format(
+                    "%s: File '%s' successfully sent to %s:%s",
+                    connectionKey, requestArguments.get(0), clientDataAddress, clientDataPort
+            ));
+
+            sendResponse(FTPResponseCode.DATA_TRANSFER_COMPLETED + " Data transmission completed");
         }
 
     }
