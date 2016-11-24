@@ -1,14 +1,12 @@
 package tnl;
 
-import org.omg.CORBA.*;
-import org.omg.CORBA.DynAnyPackage.Invalid;
-
 import java.io.*;
+import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.net.*;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.logging.Logger;
+
 
 
 public class FTPServerThread extends Thread {
@@ -83,8 +81,11 @@ public class FTPServerThread extends Thread {
 
         public static final String OPEN_DATA_CONNECTION = "PORT";
 
+        public static final String MAKE_NEW_DIRECTORY = "MKD";
         public static final String LIST_FILE_DIRECTORY = "LIST";
         public static final String GOTO_DIRECTORY = "CWD";
+
+        public static final String DELETE = "DELE";
 
         public static final String DOWNLOAD_FILE = "RETR";
         public static final String UPLOAD_FILE_NO_OVERWITE = "STOU";
@@ -95,7 +96,8 @@ public class FTPServerThread extends Thread {
         private static final List<String> REQUEST_CODES = Arrays.asList(new String[] {
             "USER", "PASS",
             "PORT",
-            "LIST", "CWD",
+            "MKD", "LIST", "CWD",
+            "DELE",
             "RETR", "STOU", "STORE",
             "QUIT"
         });
@@ -114,7 +116,7 @@ public class FTPServerThread extends Thread {
 
         public static final int LOGGED_IN = 230;
         public static final int LOGGED_OUT = 221;
-        public static final int ACTION_DONE = 250;
+        public static final int REQUEST_ACTION_DONE = 250;
         public static final int DATA_TRANSFER_COMPLETED = 226;
         public static final int DATA_CONNECTION_OPEN_DONE = 200;
 
@@ -124,6 +126,7 @@ public class FTPServerThread extends Thread {
         public static final int DATA_CONNECTION_OPEN_FAILED = 425;
         public static final int DATA_TRANSFER_ERROR = 426;
         public static final int REQUEST_FILE_ACTION_FAILED = 450;
+        public static final int REQUEST_ACTION_FAILED = 451;
 
         public static final int SYNTAX_ERROR = 501;
     }
@@ -266,8 +269,6 @@ public class FTPServerThread extends Thread {
     }
 
     public void close() {
-        Logger.getGlobal().info(String.format("%s want to close", connectionKey));
-
         wantToClose = true;
 
         if (!isRunning) {
@@ -317,8 +318,7 @@ public class FTPServerThread extends Thread {
     }
 
     private void handleRequest(FTPRequest request)
-            throws InvalidRequestException, ServerUnrecoverableException
-    {
+            throws InvalidRequestException, ServerUnrecoverableException {
         if (request.code.equals(FTPRequestCode.USERNAME)) {
             loginWithUsername(request.arguments);
 
@@ -333,6 +333,15 @@ public class FTPServerThread extends Thread {
 
         } else if (request.code.equals(FTPRequestCode.DOWNLOAD_FILE)) {
             serveDownloadRequest(request.arguments);
+
+        } else if (request.code.equals(FTPRequestCode.UPLOAD_FILE_NO_OVERWITE)) {
+            serverUploadRequest(request.arguments, false);
+
+        } else if (request.code.equals(FTPRequestCode.UPLOAD_FILE_OVERWRITE)) {
+            serverUploadRequest(request.arguments, true);
+
+        } else if (request.code.equals(FTPRequestCode.DELETE)) {
+            serveDeleteRequest(request.arguments);
 
         } else {
             throw new InvalidRequestException();
@@ -414,7 +423,6 @@ public class FTPServerThread extends Thread {
             throw new InvalidRequestException();
         }
 
-        // Need to handle exception here!
         sendResponse(FTPResponseCode.DATA_CONNECTION_OPEN_DONE + " Data connection parameters saved");
     }
 
@@ -463,18 +471,19 @@ public class FTPServerThread extends Thread {
         }
 
         Socket dataSocket = null;
-        DataOutputStream socketOutStream;
+        DataOutputStream dataSocketOutStream = null;
         byte[] buffer = new byte[BUFFER_SIZE];
 
         try {
             dataSocket = establishDataConnection();
-            socketOutStream = new DataOutputStream(dataSocket.getOutputStream());
+            dataSocketOutStream = new DataOutputStream(dataSocket.getOutputStream());
         } catch (Exception e) {
-            // Close data socket, if already created. Ignore the exception
+            // Close data socket, if already created. Close file stream
             try {
-                if (dataSocket != null) {
-                    dataSocket.close();
-                }
+                dataSocketOutStream.close();
+                dataSocket.close();
+
+                fileRequestedInpStream.close();
             } catch (Exception se) {
                 // Silently ignore the exception
             }
@@ -503,8 +512,8 @@ public class FTPServerThread extends Thread {
             }
 
             try {
-                socketOutStream.write(buffer, 0, byteRead);
-                socketOutStream.flush();
+                dataSocketOutStream.write(buffer, 0, byteRead);
+                dataSocketOutStream.flush();
             } catch (Exception e) {
                 errorOccured = 2;
                 break;
@@ -514,7 +523,7 @@ public class FTPServerThread extends Thread {
 
         try {
             // Close data socket
-            socketOutStream.close();
+            dataSocketOutStream.close();
             dataSocket.close();
 
             // Close file
@@ -529,14 +538,14 @@ public class FTPServerThread extends Thread {
                     connectionKey, requestArguments.get(0)
             ));
 
-            sendResponse(FTPResponseCode.DATA_CONNECTION_OPEN_FAILED + " Error in file access on server");
+            sendResponse(FTPResponseCode.DATA_TRANSFER_ERROR + " Error in file access on server");
         } else if (errorOccured == 2) {
             System.out.println(String.format(
                     "%s: Error sending file data to client at %s:%s",
                     connectionKey, clientDataAddress, clientDataPort
             ));
 
-            sendResponse(FTPResponseCode.DATA_CONNECTION_OPEN_FAILED + " File data transmission error");
+            sendResponse(FTPResponseCode.DATA_TRANSFER_ERROR + " File data transmission error");
         } else {
             System.out.println(String.format(
                     "%s: File '%s' successfully sent to %s:%s",
@@ -546,6 +555,166 @@ public class FTPServerThread extends Thread {
             sendResponse(FTPResponseCode.DATA_TRANSFER_COMPLETED + " Data transmission completed");
         }
 
+    }
+
+    private void serverUploadRequest(ArrayList<String> requestArguments, boolean overwrite)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (requestArguments.size() != 1) {
+            throw new InvalidRequestException();
+        }
+
+        if (clientDataAddress == null || clientDataPort == -1) {
+            throw new InvalidRequestException();
+        }
+
+        File fileIn = currentAccessDirectory.resolve(requestArguments.get(0)).toFile();
+
+        // If file does not exist
+        if (fileIn.exists() && !overwrite) {
+            sendResponse(FTPResponseCode.REQUEST_FILE_ACTION_FAILED + " File exist");
+            return;
+        }
+
+        FileOutputStream fileRetrievedInpStream;
+
+        try {
+            fileRetrievedInpStream = new FileOutputStream(fileIn);
+        } catch (Exception e) {
+            sendResponse(FTPResponseCode.REQUEST_FILE_ACTION_FAILED + " Error creating new file");
+            return;
+        }
+
+        try {
+            sendResponse(FTPResponseCode.SIGNAL_DATA_CONNECTION_OPEN + " Data connection about to open");
+        } catch (Exception e) {
+            System.out.println(String.format(
+                    "%s: Error establishing data connection to %s:%s",
+                    connectionKey, clientDataAddress, clientDataPort
+            ));
+
+            return;
+        }
+
+        Socket dataSocket = null;
+        DataInputStream dataSocketInpStream = null;
+        byte[] buffer = new byte[BUFFER_SIZE];
+
+        try {
+            dataSocket = establishDataConnection();
+            dataSocketInpStream = new DataInputStream(dataSocket.getInputStream());
+        } catch (Exception e) {
+            // Close data socket, if already created. Close file stream
+            try {
+                dataSocketInpStream.close();
+                dataSocket.close();
+
+                fileRetrievedInpStream.close();
+            } catch (Exception se) {
+                // Silently ignore the exception
+            }
+
+            System.out.println(String.format(
+                    "%s: Error establishing data connection to %s:%s",
+                    connectionKey, clientDataAddress, clientDataPort
+            ));
+
+            return;
+        }
+
+        int byteRead;
+        int errorOccured = 0;
+
+        while (true) {
+            try {
+                byteRead = dataSocketInpStream.read(buffer, 0, BUFFER_SIZE);
+            } catch (Exception e) {
+                errorOccured = 2;
+                break;
+            }
+
+            if (byteRead == -1) {
+                break;
+            }
+
+            try {
+                fileRetrievedInpStream.write(buffer, 0, byteRead);
+                fileRetrievedInpStream.flush();
+            } catch (Exception e) {
+                errorOccured = 1;
+                break;
+            }
+
+        }
+
+        try {
+            // Close data socket
+            dataSocketInpStream.close();
+            dataSocket.close();
+
+            // Close file
+            fileRetrievedInpStream.close();
+        } catch (Exception e) {
+            // Silently ignore the exception
+        }
+
+        // If error occurs during file uploading process, then we should delete the data already received
+        if (errorOccured != 0) {
+            try {
+                fileIn.delete();
+            } catch (Exception e) {
+                //Silently ignore the exception
+            }
+
+        }
+
+        if (errorOccured == 1) {
+            System.out.println(String.format(
+                    "%s: Error writing data from file '%s'",
+                    connectionKey, requestArguments.get(0)
+            ));
+
+            sendResponse(FTPResponseCode.DATA_TRANSFER_ERROR + " Error in file access on server");
+        } else if (errorOccured == 2) {
+            System.out.println(String.format(
+                    "%s: Error receiving transmitted file data at %s:%s",
+                    connectionKey, clientDataAddress, clientDataPort
+            ));
+
+            sendResponse(FTPResponseCode.DATA_TRANSFER_ERROR + " File data transmission error");
+        } else {
+            System.out.println(String.format(
+                    "%s: File '%s' successfully uploaded to %s:%s",
+                    connectionKey, requestArguments.get(0), clientDataAddress, clientDataPort
+            ));
+
+            sendResponse(FTPResponseCode.DATA_TRANSFER_COMPLETED + " Data transmission completed");
+        }
+
+    }
+
+    private void serveDeleteRequest(ArrayList<String> requestArguments)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (requestArguments.size() != 1) {
+            throw new InvalidRequestException();
+        }
+
+        File pathToDeleted = currentAccessDirectory.resolve(requestArguments.get(0)).toFile();
+
+        if (!pathToDeleted.exists()) {
+            sendResponse(FTPResponseCode.REQUEST_ACTION_FAILED + " Path not exist");
+            return;
+        }
+
+        try {
+            pathToDeleted.delete();
+        } catch (Exception e) {
+            sendResponse(FTPResponseCode.REQUEST_ACTION_FAILED + " Error deleting path");
+            return;
+        }
+
+        sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " Done");
     }
 
 }
