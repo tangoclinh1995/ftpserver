@@ -923,7 +923,7 @@ public class FTPServerThread extends Thread {
                 result += "\n\n";
             }
 
-            result += directoryListStr;
+            result += fileListStr;
         }
 
         byte[] resultByteArray = result.getBytes(ENCODING_UTF8);
