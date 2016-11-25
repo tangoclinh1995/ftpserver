@@ -4,6 +4,7 @@ import java.io.*;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.net.*;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -136,6 +137,7 @@ public class FTPServerThread extends Thread {
 
     private HashMap<String, String> USERS;
     private final int BUFFER_SIZE = 1024;
+    private final Charset ENCODING_UTF8 = Charset.forName("UTF-8");
 
 
 
@@ -355,6 +357,8 @@ public class FTPServerThread extends Thread {
 
         } else if (request.code.equals(FTPRequestCode.GOTO_DIRECTORY)) {
             serveChangeDirectoryRequest(request.arguments);
+        } else if (request.code.equals(FTPRequestCode.LIST_FILE_DIRECTORY)) {
+            serveListDirectoryContentRequest(request.arguments);
 
         } else {
             throw new InvalidRequestException();
@@ -839,6 +843,137 @@ public class FTPServerThread extends Thread {
         statusHeader = String.format("%s@%s %s%s", username, connectionKey, File.separator, relativePath);
 
         sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " " + relativePath);
+    }
+
+    private void serveListDirectoryContentRequest(ArrayList<String> requestArguments)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (requestArguments.size() != 0) {
+            throw new InvalidRequestException();
+        }
+
+        if (clientDataAddress == null || clientDataPort == -1) {
+            throw new InvalidRequestException();
+        }
+
+        // If current directory has been deleted
+        if (!currentAccessDirectory.toFile().exists()) {
+            sendResponse(FTPResponseCode.REQUEST_ACTION_FAILED + " Current directory not exist anymore");
+            return;
+        }
+
+        try {
+            sendResponse(FTPResponseCode.SIGNAL_DATA_CONNECTION_OPEN + " Data connection about to open");
+        } catch (Exception e) {
+            System.out.println(String.format(
+                    "%s: Error establishing data connection to %s:%s",
+                    statusHeader, clientDataAddress, clientDataPort
+            ));
+
+            return;
+        }
+
+        Socket dataSocket = null;
+        DataOutputStream dataSocketOutStream = null;
+        byte[] buffer = new byte[BUFFER_SIZE];
+
+        try {
+            dataSocket = establishDataConnection();
+            dataSocketOutStream = new DataOutputStream(dataSocket.getOutputStream());
+        } catch (Exception e) {
+            // Close data socket, if already created. Close file stream
+            try {
+                dataSocketOutStream.close();
+                dataSocket.close();
+            } catch (Exception se) {
+                // Silently ignore the exception
+            }
+
+            System.out.println(String.format(
+                    "%s: Error establishing data connection to %s:%s",
+                    statusHeader, clientDataAddress, clientDataPort
+            ));
+
+            return;
+        }
+
+        File[] contents = currentAccessDirectory.toFile().listFiles();
+
+        ArrayList<String> fileList = new ArrayList<String>();
+        ArrayList<String> directoryList = new ArrayList<String>();
+
+        for (File content: contents) {
+            if (content.isDirectory()) {
+                directoryList.add(content.getName() + File.separator);
+            } else {
+                fileList.add(content.getName());
+            }
+
+        }
+
+        Collections.sort(fileList);
+        Collections.sort(directoryList);
+
+        String fileListStr = String.join("\n", fileList);
+        String directoryListStr = String.join("\n", directoryList);
+
+        String result = directoryListStr;
+        if (fileList.size() != 0) {
+            if (directoryList.size() != 0) {
+                result += "\n\n";
+            }
+
+            result += directoryListStr;
+        }
+
+        byte[] resultByteArray = result.getBytes(ENCODING_UTF8);
+
+        int byteReadStart = 0;
+        int byteReadLength;
+        int errorOccured = 0;
+
+        while (byteReadStart < resultByteArray.length) {
+            if (byteReadStart + BUFFER_SIZE >= resultByteArray.length) {
+                byteReadLength = resultByteArray.length - byteReadStart;
+            } else {
+                byteReadLength = BUFFER_SIZE;
+            }
+
+            try {
+                dataSocketOutStream.write(resultByteArray, byteReadStart, byteReadLength);
+                dataSocketOutStream.flush();
+            } catch (Exception e) {
+                errorOccured = 2;
+                break;
+            }
+
+            byteReadStart += byteReadLength;
+        }
+
+        try {
+            // Close data socket
+            dataSocketOutStream.close();
+            dataSocket.close();
+        } catch (Exception e) {
+            // Silently ignore the exception
+        }
+
+        if (errorOccured == 2) {
+            System.out.println(String.format(
+                    "%s: Error sending list of files and directories to client at %s:%s",
+                    statusHeader, clientDataAddress, clientDataPort
+            ));
+
+            sendResponse(FTPResponseCode.DATA_TRANSFER_ERROR + " Data transmission error");
+        } else {
+            System.out.println(String.format(
+                    "%s: List of files and directories successfully sent to %s:%s",
+                    statusHeader, clientDataAddress, clientDataPort
+            ));
+
+            sendResponse(FTPResponseCode.DATA_TRANSFER_COMPLETED + " Data transmission completed");
+        }
+
     }
 
 }
