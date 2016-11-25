@@ -24,7 +24,7 @@ public class FTPServer extends Thread implements onFTPThreadTerminateListener {
         this.serverSocket = new ServerSocket(port);
         this.wantToClose = false;
 
-        this.serverDirectory = Paths.get(serverDirectory);
+        this.serverDirectory = Paths.get(serverDirectory).toRealPath();
 
         currentConnectionMap = new TreeMap<String, FTPServerThread>();
     }

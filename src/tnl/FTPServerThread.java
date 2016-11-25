@@ -4,6 +4,7 @@ import java.io.*;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.net.*;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -173,7 +174,7 @@ public class FTPServerThread extends Thread {
 
         this.connectionClosedListener = autoTerminateListener;
 
-        this.currentAccessDirectory = this.serverDirectory.toAbsolutePath();
+        this.currentAccessDirectory = this.serverDirectory.toRealPath();
 
         hasLoggedIn = false;
         username = null;
@@ -343,6 +344,12 @@ public class FTPServerThread extends Thread {
         } else if (request.code.equals(FTPRequestCode.DELETE)) {
             serveDeleteRequest(request.arguments);
 
+        } else if (request.code.equals(FTPRequestCode.MAKE_NEW_DIRECTORY)) {
+            serveMakeNewDirectoryRequest(request.arguments);
+
+        } else if (request.code.equals(FTPRequestCode.GOTO_DIRECTORY)) {
+            serveChangeDirectoryRequest(request.arguments);
+
         } else {
             throw new InvalidRequestException();
         }
@@ -402,7 +409,7 @@ public class FTPServerThread extends Thread {
             System.out.println(String.format("%s: User %s logged in successfully", connectionKey, username));
 
         } else {
-            // Loggin unsuccessfully
+            // Logged in unsuccessfully
             throw new ServerUnrecoverableException("Invalid password");
         }
 
@@ -704,15 +711,114 @@ public class FTPServerThread extends Thread {
 
         if (!pathToDeleted.exists()) {
             sendResponse(FTPResponseCode.REQUEST_ACTION_FAILED + " Path not exist");
+
             return;
         }
 
         try {
-            pathToDeleted.delete();
+            boolean deleteResult = pathToDeleted.delete();
+
+            if (!deleteResult) {
+                throw new Exception();
+            }
+
         } catch (Exception e) {
-            sendResponse(FTPResponseCode.REQUEST_ACTION_FAILED + " Error deleting path");
+            sendResponse(
+                    FTPResponseCode.REQUEST_ACTION_FAILED +
+                            " Error deleting path (due to access permission or non-empty directory)"
+            );
+
             return;
         }
+
+        sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " Done");
+    }
+
+    private void serveMakeNewDirectoryRequest(ArrayList<String> requestArguments)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (requestArguments.size() != 1) {
+            throw new InvalidRequestException();
+        }
+
+        File pathToCreated = currentAccessDirectory.resolve(requestArguments.get(0)).toFile();
+
+        if (pathToCreated.exists()) {
+            sendResponse(FTPResponseCode.REQUEST_ACTION_FAILED + " Directory already exists");
+            return;
+        }
+
+        try {
+            boolean createResult = pathToCreated.mkdir();
+
+            if (!createResult) {
+                throw new Exception();
+            }
+
+        } catch (Exception e) {
+            sendResponse(
+                    FTPResponseCode.REQUEST_ACTION_FAILED + " Error creating new directory");
+
+            return;
+        }
+
+        sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " Done");
+    }
+
+    private void serveChangeDirectoryRequest(ArrayList<String> requestArguments)
+            throws InvalidRequestException, ServerUnrecoverableException
+    {
+        if (requestArguments.size() > 1) {
+            throw new InvalidRequestException();
+        }
+
+        // Go back to root directory
+        if (requestArguments.size() == 0) {
+            currentAccessDirectory = serverDirectory.toAbsolutePath();
+            sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " Done");
+
+            return;
+        }
+
+        Path newPath = null;
+        try {
+            newPath = currentAccessDirectory
+                    .resolve(requestArguments.get(0))
+                    .toRealPath();
+
+        } catch (Exception e) {
+            sendResponse(FTPResponseCode.REQUEST_ACTION_FAILED + " Cannot resolve path");
+
+            return;
+        }
+
+        if (!Files.exists(newPath)) {
+            sendResponse(FTPResponseCode.REQUEST_ACTION_FAILED + " Path does not exist");
+
+            return;
+        }
+
+        if (!Files.isDirectory(newPath)) {
+            sendResponse(FTPResponseCode.REQUEST_ACTION_FAILED + " Path is not a directory");
+
+            return;
+        }
+
+        // If new path is "parent" of the root server path, reject the request
+        if (
+                serverDirectory.toString().startsWith(newPath.toString())
+                && !serverDirectory.toString().equals(newPath.toString())
+        ) {
+            sendResponse(
+                    FTPResponseCode.REQUEST_ACTION_FAILED +
+                    " Path is parent of root path and not permitted to access"
+            );
+
+            return;
+        }
+
+        // Change the path
+        currentAccessDirectory = newPath;
 
         sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " Done");
     }

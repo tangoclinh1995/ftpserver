@@ -31,11 +31,11 @@ public class FTPServerConsole {
             return;
         }
 
-        System.out.print("Absolute path to server directory: ");
+        System.out.print("Absolute path to Server base directory: ");
         serverDirectory = scanConsole.nextLine();
 
         try {
-            if (!Files.isDirectory(Paths.get(serverDirectory))) {
+            if (!Files.isDirectory(Paths.get(serverDirectory).toRealPath())) {
                 System.out.println("Invalid path! Terminated");
 
                 return;
