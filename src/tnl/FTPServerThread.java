@@ -863,6 +863,23 @@ public class FTPServerThread extends Thread {
         sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " " + relativePath);
     }
 
+    private String joinArrayListOfString(String delimiter, ArrayList<String> list) {
+        StringBuilder sb = new StringBuilder();
+        boolean notFirst = false;
+
+        for (String s: list) {
+            if (notFirst) {
+                sb.append(delimiter);
+            }
+
+            sb.append(s);
+
+            notFirst = true;
+        }
+
+        return sb.toString();
+    }
+
     private void serveListDirectoryContentRequest(ArrayList<String> requestArguments)
             throws InvalidRequestException, ServerUnrecoverableException
     {
@@ -932,8 +949,8 @@ public class FTPServerThread extends Thread {
         Collections.sort(fileList);
         Collections.sort(directoryList);
 
-        String fileListStr = String.join("\n", fileList);
-        String directoryListStr = String.join("\n", directoryList);
+        String fileListStr = joinArrayListOfString("\n", fileList);
+        String directoryListStr = joinArrayListOfString("\n", directoryList);
 
         String result = directoryListStr;
         if (fileList.size() != 0) {
