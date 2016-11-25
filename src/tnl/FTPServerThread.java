@@ -288,8 +288,11 @@ public class FTPServerThread extends Thread {
         USERS = new HashMap<String, String>();
 
         USERS.put("usernopass", "");
+        
         USERS.put("user1", "user1");
         USERS.put("user2", "user2");
+        USERS.put("user3", "user3");
+        USERS.put("user3", "user4");
     }
 
     private void closeSocket(boolean forced) {
