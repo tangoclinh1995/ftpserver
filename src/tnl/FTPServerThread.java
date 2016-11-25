@@ -155,6 +155,8 @@ public class FTPServerThread extends Thread {
 
     private String connectionKey;
 
+    private String statusHeader;
+
     private boolean hasLoggedIn;
     private String username;
 
@@ -178,6 +180,8 @@ public class FTPServerThread extends Thread {
 
         hasLoggedIn = false;
         username = null;
+
+        statusHeader = this.connectionKey;
 
         try {
             this.inputStream = new BufferedReader((new InputStreamReader(this.socket.getInputStream())));
@@ -218,14 +222,14 @@ public class FTPServerThread extends Thread {
                 break;
             }
 
-            System.out.println(String.format("%s: %s", connectionKey, request));
+            System.out.println(String.format("%s: %s", statusHeader, request));
 
             FTPRequest ftpRequest;
             try {
                 ftpRequest = new FTPRequest(request);
             } catch (Exception e) {
                 // Invalid request, will close the connection immediately
-                System.out.println(String.format("%s: Invalid request!", connectionKey));
+                System.out.println(String.format("%s: Invalid request!", statusHeader));
 
                 closeSocket(true);
                 connectionClosedListener.onConnectionAutoTerminated(connectionKey);
@@ -240,7 +244,7 @@ public class FTPServerThread extends Thread {
                 handleRequest(ftpRequest);
 
             } catch (InvalidRequestException e) {
-                System.out.println(String.format("%s: Invalid request!.", connectionKey));
+                System.out.println(String.format("%s: Invalid request!.", statusHeader));
 
                 closeSocket(true);
                 connectionClosedListener.onConnectionAutoTerminated(connectionKey);
@@ -249,7 +253,7 @@ public class FTPServerThread extends Thread {
                 break;
 
             } catch (ServerUnrecoverableException e) {
-                System.out.println(String.format("%s: %s!", connectionKey, e.getMessage()));
+                System.out.println(String.format("%s: %s!", statusHeader, e.getMessage()));
 
                 closeSocket(true);
                 connectionClosedListener.onConnectionAutoTerminated(connectionKey);
@@ -310,6 +314,8 @@ public class FTPServerThread extends Thread {
     }
 
     private void sendResponse(String response) throws ServerUnrecoverableException {
+        System.out.println(String.format("%s: %s", statusHeader, response));
+
         outputStream.println(response);
 
         if (outputStream.checkError()) {
@@ -380,7 +386,9 @@ public class FTPServerThread extends Thread {
             sendResponse(FTPResponseCode.LOGGED_IN + " Logged in successfully");
             hasLoggedIn = true;
 
-            System.out.println(String.format("%s: User %s logged in successfully", connectionKey, username));
+            statusHeader = username + "@" + connectionKey;
+
+            System.out.println(String.format("%s: User %s logged in successfully", statusHeader, username));
         } else {
             // Password required
             sendResponse(FTPResponseCode.ENTER_PASS + " Enter password");
@@ -406,7 +414,9 @@ public class FTPServerThread extends Thread {
             sendResponse(FTPResponseCode.LOGGED_IN + " Logged in successfully");
             hasLoggedIn = true;
 
-            System.out.println(String.format("%s: User %s logged in successfully", connectionKey, username));
+            statusHeader = username + "@" + connectionKey;
+
+            System.out.println(String.format("%s: User %s logged in successfully", statusHeader, username));
 
         } else {
             // Logged in unsuccessfully
@@ -471,7 +481,7 @@ public class FTPServerThread extends Thread {
         } catch (Exception e) {
             System.out.println(String.format(
                     "%s: Error establishing data connection to %s:%s",
-                    connectionKey, clientDataAddress, clientDataPort
+                    statusHeader, clientDataAddress, clientDataPort
             ));
 
             return;
@@ -497,7 +507,7 @@ public class FTPServerThread extends Thread {
 
             System.out.println(String.format(
                     "%s: Error establishing data connection to %s:%s",
-                    connectionKey, clientDataAddress, clientDataPort
+                    statusHeader, clientDataAddress, clientDataPort
             ));
 
             return;
@@ -542,21 +552,21 @@ public class FTPServerThread extends Thread {
         if (errorOccured == 1) {
             System.out.println(String.format(
                     "%s: Error reading data from file '%s'",
-                    connectionKey, requestArguments.get(0)
+                    statusHeader, requestArguments.get(0)
             ));
 
             sendResponse(FTPResponseCode.DATA_TRANSFER_ERROR + " Error in file access on server");
         } else if (errorOccured == 2) {
             System.out.println(String.format(
                     "%s: Error sending file data to client at %s:%s",
-                    connectionKey, clientDataAddress, clientDataPort
+                    statusHeader, clientDataAddress, clientDataPort
             ));
 
             sendResponse(FTPResponseCode.DATA_TRANSFER_ERROR + " File data transmission error");
         } else {
             System.out.println(String.format(
                     "%s: File '%s' successfully sent to %s:%s",
-                    connectionKey, requestArguments.get(0), clientDataAddress, clientDataPort
+                    statusHeader, requestArguments.get(0), clientDataAddress, clientDataPort
             ));
 
             sendResponse(FTPResponseCode.DATA_TRANSFER_COMPLETED + " Data transmission completed");
@@ -597,7 +607,7 @@ public class FTPServerThread extends Thread {
         } catch (Exception e) {
             System.out.println(String.format(
                     "%s: Error establishing data connection to %s:%s",
-                    connectionKey, clientDataAddress, clientDataPort
+                    statusHeader, clientDataAddress, clientDataPort
             ));
 
             return;
@@ -623,7 +633,7 @@ public class FTPServerThread extends Thread {
 
             System.out.println(String.format(
                     "%s: Error establishing data connection to %s:%s",
-                    connectionKey, clientDataAddress, clientDataPort
+                    statusHeader, clientDataAddress, clientDataPort
             ));
 
             return;
@@ -678,21 +688,21 @@ public class FTPServerThread extends Thread {
         if (errorOccured == 1) {
             System.out.println(String.format(
                     "%s: Error writing data from file '%s'",
-                    connectionKey, requestArguments.get(0)
+                    statusHeader, requestArguments.get(0)
             ));
 
             sendResponse(FTPResponseCode.DATA_TRANSFER_ERROR + " Error in file access on server");
         } else if (errorOccured == 2) {
             System.out.println(String.format(
                     "%s: Error receiving transmitted file data at %s:%s",
-                    connectionKey, clientDataAddress, clientDataPort
+                    statusHeader, clientDataAddress, clientDataPort
             ));
 
             sendResponse(FTPResponseCode.DATA_TRANSFER_ERROR + " File data transmission error");
         } else {
             System.out.println(String.format(
-                    "%s: File '%s' successfully uploaded to %s:%s",
-                    connectionKey, requestArguments.get(0), clientDataAddress, clientDataPort
+                    "%s: File '%s' successfully uploaded from %s:%s",
+                    statusHeader, requestArguments.get(0), clientDataAddress, clientDataPort
             ));
 
             sendResponse(FTPResponseCode.DATA_TRANSFER_COMPLETED + " Data transmission completed");
@@ -775,7 +785,10 @@ public class FTPServerThread extends Thread {
         // Go back to root directory
         if (requestArguments.size() == 0) {
             currentAccessDirectory = serverDirectory.toAbsolutePath();
-            sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " Done");
+
+            statusHeader = String.format("%s@%s", username, connectionKey);
+
+            sendResponse(String.valueOf(FTPResponseCode.REQUEST_ACTION_DONE));
 
             return;
         }
@@ -811,7 +824,7 @@ public class FTPServerThread extends Thread {
         ) {
             sendResponse(
                     FTPResponseCode.REQUEST_ACTION_FAILED +
-                    " Path is parent of root path and not permitted to access"
+                    " New path is parent of root path and not permitted to access"
             );
 
             return;
@@ -820,7 +833,12 @@ public class FTPServerThread extends Thread {
         // Change the path
         currentAccessDirectory = newPath;
 
-        sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " Done");
+        String relativePath = serverDirectory.relativize(newPath).toString();
+
+        // Change the status header
+        statusHeader = String.format("%s@%s %s%s", username, connectionKey, File.separator, relativePath);
+
+        sendResponse(FTPResponseCode.REQUEST_ACTION_DONE + " " + relativePath);
     }
 
 }
