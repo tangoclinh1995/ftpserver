@@ -137,6 +137,7 @@ public class FTPServerThread extends Thread {
 
     private HashMap<String, String> USERS;
     private final int BUFFER_SIZE = 1024;
+    private final int READ_TIMEOUT = 8000;
     private final Charset ENCODING_UTF8 = Charset.forName("UTF-8");
 
 
@@ -186,6 +187,8 @@ public class FTPServerThread extends Thread {
         statusHeader = this.connectionKey;
 
         try {
+            socket.setSoTimeout(READ_TIMEOUT);
+
             this.inputStream = new BufferedReader((new InputStreamReader(this.socket.getInputStream())));
             this.outputStream = new PrintWriter(this.socket.getOutputStream(), true);
         } catch (Exception e) {
@@ -201,13 +204,21 @@ public class FTPServerThread extends Thread {
     public void run() {
         isRunning = true;
 
-        String request;
+        String request = null;
         boolean closedHasBeenAnnouced = false;
 
+        boolean readTimeout;
+
         while (!wantToClose) {
+            readTimeout = false;
+
             try {
                 request = inputStream.readLine();
-            } catch (Exception e) {
+            } catch (SocketTimeoutException e) {
+                // Timeout due to waiting. Continue as usual
+
+                readTimeout = true;
+            } catch (IOException e) {
                 // Input stream error. Cannot recoverable. Terminate
                 closeSocket(true);
                 connectionClosedListener.onConnectionAutoTerminated(connectionKey);
@@ -222,6 +233,10 @@ public class FTPServerThread extends Thread {
 
                 closedHasBeenAnnouced = true;
                 break;
+            }
+
+            if (readTimeout) {
+                continue;
             }
 
             System.out.println(String.format("%s: %s", statusHeader, request));
@@ -292,7 +307,7 @@ public class FTPServerThread extends Thread {
         USERS.put("user1", "user1");
         USERS.put("user2", "user2");
         USERS.put("user3", "user3");
-        USERS.put("user3", "user4");
+        USERS.put("user4", "user4");
     }
 
     private void closeSocket(boolean forced) {

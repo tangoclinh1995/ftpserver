@@ -6,6 +6,10 @@ import java.util.Scanner;
 
 
 public class FTPServerConsole {
+    private static final int DEFAULT_PORT = 6788;
+
+
+
     private static Scanner scanConsole = new Scanner(System.in);
     private static FTPServer ftpServer;
 
@@ -19,16 +23,19 @@ public class FTPServerConsole {
         System.out.println("----------");
         System.out.println();
 
-        System.out.print("Server port: ");
+        System.out.print("Server port (leave blank for default: " + DEFAULT_PORT + "): ");
 
-        try {
-            port = scanConsole.nextInt();
+        String textInput = scanConsole.nextLine().trim();
+        if (textInput.equals("")) {
+            port = DEFAULT_PORT;
+        } else {
+            try {
+                port = Integer.parseInt(textInput);
+            } catch (Exception e) {
+                System.out.println("\nInvalid port number! Terminated.");
+                return;
+            }
 
-            // Consume the '\n' character in order to prepare for the next nextLine()
-            scanConsole.nextLine();
-        } catch (Exception e) {
-            System.out.println("\nInvalid port number! Terminated.");
-            return;
         }
 
         System.out.print("Absolute path to Server base directory: ");
