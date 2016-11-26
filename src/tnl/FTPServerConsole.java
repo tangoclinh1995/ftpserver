@@ -63,6 +63,7 @@ public class FTPServerConsole {
 
         System.out.println(String.format("\nFTP Server started at port %d", port));
         System.out.println("Type h/H to get help, q/Q to stop the server");
+        System.out.println();
 
         while (true) {
             System.out.print("> ");
