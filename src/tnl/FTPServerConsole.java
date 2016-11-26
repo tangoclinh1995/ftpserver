@@ -72,7 +72,7 @@ public class FTPServerConsole {
 
             if (command.equals("q") || command.equals("Q")) {
                 System.out.println("Closing FTP server");
-                ftpServer.close();
+                ftpServer.closeAll();
                 return;
             }
 
@@ -90,7 +90,7 @@ public class FTPServerConsole {
                 String connectionKey = command.substring(2).trim();
 
                 try {
-                    ftpServer.closeConnection(connectionKey);
+                    ftpServer.closeIndividualConnection(connectionKey);
                 } catch (Exception e) {
                     System.out.println(String.format("%s: This connection does not exist.", connectionKey));
                 }

@@ -35,13 +35,13 @@ public class FTPServer extends Thread implements onFTPThreadTerminateListener {
             try {
                 socket = serverSocket.accept();
             } catch (SocketException e) {
-                // The close() command is issued. Silently ignore as
+                // The closeAll() command is issued. Silently ignore as
                 // it will be handled later on
             } catch (IOException e) {
                 System.out.println("I/O error occur while waiting for connection. ");
             }
 
-            // If close command is issued
+            // If closeAll command is issued
             if (wantToClose) {
                 try {
                     socket.close();
@@ -75,7 +75,7 @@ public class FTPServer extends Thread implements onFTPThreadTerminateListener {
 
     }
 
-    public void close() {
+    public void closeAll() {
         wantToClose = true;
 
         try {
@@ -86,7 +86,7 @@ public class FTPServer extends Thread implements onFTPThreadTerminateListener {
 
     }
 
-    public void closeConnection(String connectionKey) throws Exception {
+    public void closeIndividualConnection(String connectionKey) throws Exception {
         FTPServerThread ftpServerThread = currentConnectionMap.get(connectionKey);
 
         if (ftpServerThread == null) {
