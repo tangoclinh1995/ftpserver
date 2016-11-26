@@ -362,7 +362,7 @@ public class FTPServerThread extends Thread {
             wantToClose = true;
 
         } else if (request.code.equals(FTPRequestCode.OPEN_DATA_CONNECTION)) {
-            saveDataConnectionArugments(request.arguments);
+            saveDataConnectionArguments(request.arguments);
 
         } else if (request.code.equals(FTPRequestCode.DOWNLOAD_FILE)) {
             serveDownloadRequest(request.arguments);
@@ -453,7 +453,7 @@ public class FTPServerThread extends Thread {
 
     }
 
-    private void saveDataConnectionArugments(ArrayList<String> requestArguments)
+    private void saveDataConnectionArguments(ArrayList<String> requestArguments)
             throws InvalidRequestException, ServerUnrecoverableException
     {
         if (requestArguments.size() != 2) {
